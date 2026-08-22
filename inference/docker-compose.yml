@@ -1,0 +1,57 @@
+# Standalone vLLM server.
+#
+# Use this when the model runs on a different machine from the application.
+# For a single GPU box running everything, use the repository root's
+# docker-compose.gpu.yml instead.
+#
+#   docker compose -f inference/docker-compose.yml up
+
+services:
+  vllm:
+    build:
+      context: .
+      args:
+        VLLM_VERSION: ${VLLM_VERSION:-latest}
+    image: omnivores-vllm:latest
+    container_name: omnivores-vllm
+    restart: unless-stopped
+
+    ports:
+      # Bound to localhost by default. Change to 0.0.0.0 only behind a
+      # firewall or reverse proxy - see docs/deployment.md.
+      - "127.0.0.1:8001:8001"
+
+    environment:
+      MODEL_NAME: ${MODEL_NAME:?set MODEL_NAME, see inference/config/models.yaml}
+      SERVED_MODEL_NAME: ${SERVED_MODEL_NAME:-}
+      TENSOR_PARALLEL_SIZE: ${TENSOR_PARALLEL_SIZE:-auto}
+      MAX_MODEL_LEN: ${MAX_MODEL_LEN:-32768}
+      GPU_MEMORY_UTILIZATION: ${GPU_MEMORY_UTILIZATION:-0.90}
+      MAX_NUM_SEQS: ${MAX_NUM_SEQS:-64}
+      DTYPE: ${DTYPE:-auto}
+      QUANTIZATION: ${QUANTIZATION:-}
+      ENABLE_TOOL_CALLING: ${ENABLE_TOOL_CALLING:-true}
+      TOOL_CALL_PARSER: ${TOOL_CALL_PARSER:-hermes}
+      VLLM_API_KEY: ${VLLM_API_KEY:-}
+      HF_TOKEN: ${HF_TOKEN:-}
+      TRUST_REMOTE_CODE: ${TRUST_REMOTE_CODE:-false}
+
+    volumes:
+      # Persist weights across restarts. Without this every restart re-downloads
+      # tens of gigabytes.
+      - huggingface-cache:/root/.cache/huggingface
+
+    # vLLM uses shared memory for inter-process communication between tensor
+    # parallel ranks. Docker's 64 MB default causes crashes above 1 GPU.
+    shm_size: "16gb"
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  huggingface-cache:

@@ -1,0 +1,32 @@
+[project]
+name = "omnivores-backend"
+version = "1.0.0"
+description = "Local-first multi-agent AI workspace"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-q --strict-markers"
+filterwarnings = ["ignore::DeprecationWarning"]
+markers = [
+    "slow: takes more than a second",
+    "requires_docker: needs a working Docker daemon",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4"]
+ignore = ["E501", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_unused_configs = true
+ignore_missing_imports = true
+check_untyped_defs = true

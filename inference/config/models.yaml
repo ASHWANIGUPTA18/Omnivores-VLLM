@@ -1,0 +1,120 @@
+# ---------------------------------------------------------------------------
+# Model catalog for the vLLM deployment.
+#
+# This file is a starting point, not a recommendation. Omnivores is
+# model-agnostic on purpose: the backend never names a model, and the only
+# thing that must be true is that the served model does tool calling well
+# enough for the agent loop.
+#
+# HOW TO USE
+#   1. Pick an entry whose VRAM requirement fits your GPU.
+#   2. Copy its `model` into MODEL_NAME in backend/.env.
+#   3. Copy its `tool_call_parser` into TOOL_CALL_PARSER in inference/.env.
+#   4. Verify the parser exists in YOUR vLLM version before trusting it:
+#        vllm serve --help | grep -A5 tool-call-parser
+#      Parser names and availability change between vLLM releases, and a
+#      wrong parser produces the worst possible failure mode - the model
+#      emits a tool call as prose and the agent silently answers without it.
+#
+# SELECTION CRITERIA, roughly in priority order for this application:
+#   1. tool calling reliability  - the agent loop is useless without it
+#   2. instruction following     - agents have long, specific system prompts
+#   3. context length            - RAG context plus channel history adds up
+#   4. VRAM footprint            - must fit with KV cache headroom
+#   5. throughput                - tokens/sec at your batch size
+#   6. coding ability            - only the coder agent depends on this
+#
+# VRAM figures below are approximate weights-only at the stated precision.
+# Budget roughly 15-25% on top for the KV cache at 32k context, more for
+# concurrent users. `gpu_memory_utilization` controls how much vLLM will
+# claim; lower it if you share the GPU.
+# ---------------------------------------------------------------------------
+
+defaults:
+  host: 0.0.0.0
+  port: 8001
+  dtype: auto
+  gpu_memory_utilization: 0.90
+  max_model_len: 32768
+  tensor_parallel_size: 1
+  # Cap concurrent sequences to bound KV cache growth. Raise it if you have
+  # headroom and want more throughput under load.
+  max_num_seqs: 64
+
+# --- Candidate models ------------------------------------------------------
+# `verified` marks whether *this repository* has been run against the entry.
+# Everything ships false: verify on your own hardware and update it.
+
+models:
+  - key: qwen3-8b
+    model: Qwen/Qwen3-8B
+    tool_call_parser: hermes
+    approx_vram_gb: 16
+    precision: bf16
+    max_model_len: 32768
+    tensor_parallel_size: 1
+    verified: false
+    notes: >
+      A sensible first target for a single 24 GB card. Qwen models generally use
+      the Hermes-style parser in vLLM. Confirm against your vLLM version.
+
+  - key: qwen3-14b
+    model: Qwen/Qwen3-14B
+    tool_call_parser: hermes
+    approx_vram_gb: 28
+    precision: bf16
+    max_model_len: 32768
+    tensor_parallel_size: 1
+    verified: false
+    notes: Needs a 40 GB card at bf16, or quantization on 24 GB.
+
+  - key: qwen3-32b
+    model: Qwen/Qwen3-32B
+    tool_call_parser: hermes
+    approx_vram_gb: 64
+    precision: bf16
+    max_model_len: 32768
+    tensor_parallel_size: 2
+    verified: false
+    notes: Two 48 GB cards, or one 80 GB.
+
+  - key: llama-3.1-8b-instruct
+    model: meta-llama/Llama-3.1-8B-Instruct
+    tool_call_parser: llama3_json
+    approx_vram_gb: 16
+    precision: bf16
+    max_model_len: 32768
+    tensor_parallel_size: 1
+    verified: false
+    notes: >
+      Gated on Hugging Face - accept the license and set HF_TOKEN before the
+      first launch, or the download fails with a 401 that reads like a network
+      error.
+
+  - key: mistral-small-instruct
+    model: mistralai/Mistral-Small-Instruct-2409
+    tool_call_parser: mistral
+    approx_vram_gb: 44
+    precision: bf16
+    max_model_len: 32768
+    tensor_parallel_size: 1
+    verified: false
+    notes: Mistral models use their own parser, not hermes.
+
+# --- Quantization ----------------------------------------------------------
+# Not needed for a first run. Reach for it when a model you want does not fit.
+# Pass `quantization` only when the checkpoint is actually in that format -
+# vLLM usually detects it from the config, and forcing a mismatched value
+# fails at load time.
+#
+# Trade-off: fp8 is close to lossless on modern hardware and roughly halves
+# weight memory; int4 (AWQ/GPTQ) halves it again but costs measurable quality,
+# which shows up first in exactly the capability this app depends on most -
+# reliable tool calling. Benchmark before adopting it.
+
+quantization:
+  options: [fp8, awq, gptq, bitsandbytes]
+  requires:
+    fp8: Hopper (H100) or Ada (L40S, RTX 4090) and newer
+    awq: a checkpoint published in AWQ format
+    gptq: a checkpoint published in GPTQ format

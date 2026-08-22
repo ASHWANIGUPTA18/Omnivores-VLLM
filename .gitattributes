@@ -1,0 +1,29 @@
+# Normalize line endings.
+#
+# The critical entries are the shell scripts and Dockerfiles: this repository is
+# authored on Windows and run on a Linux GPU machine, and a CRLF in start-vllm.sh
+# produces `bad interpreter: /usr/bin/env bash^M`, which is a confusing way to
+# lose an afternoon.
+
+* text=auto eol=lf
+
+# Must be LF regardless of platform.
+*.sh          text eol=lf
+*.py          text eol=lf
+*.yml         text eol=lf
+*.yaml        text eol=lf
+Dockerfile    text eol=lf
+*.conf        text eol=lf
+.env.example  text eol=lf
+
+# Windows-only, must keep CRLF.
+*.bat         text eol=crlf
+*.cmd         text eol=crlf
+
+# Never touched.
+*.png binary
+*.jpg binary
+*.pdf binary
+*.safetensors binary
+*.gguf binary
+*.bin binary

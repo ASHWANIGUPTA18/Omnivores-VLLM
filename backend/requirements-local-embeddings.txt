@@ -1,0 +1,6 @@
+# Optional: local embedding + cross-encoder reranking on the GPU machine
+# (EMBEDDING_PROVIDER=local, RERANKER=cross_encoder).
+#
+# Pulls in torch. Install the torch build that matches your CUDA version
+# first, see https://pytorch.org/get-started/locally/ , then install this file.
+sentence-transformers>=3.0.0

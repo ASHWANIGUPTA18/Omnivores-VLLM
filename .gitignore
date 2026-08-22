@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Environment
+.env
+.env.local
+*.env
+!.env.example
+
+# Data / runtime artifacts
+backend/data/
+backend/uploads/
+backend/knowledge/*
+!backend/knowledge/.gitkeep
+*.sqlite3
+chroma/
+vectorstore.json
+
+# Node
+node_modules/
+dist/
+build/
+.vite/
+*.log
+npm-debug.log*
+
+# Models (never commit weights)
+models/
+*.safetensors
+*.gguf
+*.bin
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
