@@ -16,9 +16,10 @@ That means a deployment can retune a system prompt without touching the image.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from app.core.config import BACKEND_ROOT
 from app.core.exceptions import UnknownAgent
@@ -84,7 +85,7 @@ class AgentDefinition:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "AgentDefinition":
+    def from_dict(cls, data: dict[str, Any]) -> AgentDefinition:
         missing = {"id", "display_name", "system_prompt"} - set(data)
         if missing:
             raise ValueError(f"agent definition is missing {sorted(missing)}")

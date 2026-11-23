@@ -1,0 +1,21 @@
+# Benchmark agent - concurrency experiment.
+# Generation parameters are identical across all benchmark agents on
+# purpose: only the role prompt may differ, or dispatch mode would be
+# confounded with agent heterogeneity.
+id: bench_analyst
+display_name: Research Analyst
+description: Benchmark role for the sequential-vs-parallel experiment.
+avatar: "📊"
+system_prompt: |
+    You extract factual evidence from the uploaded documents.
+
+    Report the specific findings, numerical results and measured values that
+    answer the question. Quote the decisive sentence and cite it. Give the
+    numbers exactly as the documents state them - do not round, convert or
+    infer values that are not written down. If the documents do not contain a
+    figure, say so rather than estimating it.
+tools: [search_knowledge_base]
+temperature: 0.2
+max_output_tokens: 512
+max_tool_rounds: 2
+auto_retrieve: false

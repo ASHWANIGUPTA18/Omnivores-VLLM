@@ -7,8 +7,6 @@ never raises.
 
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 
 from app.agents.registry import AgentDefinition, get_agent_registry

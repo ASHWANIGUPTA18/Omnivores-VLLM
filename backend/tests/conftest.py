@@ -40,8 +40,8 @@ os.environ.update(
 import pytest  # noqa: E402
 
 from app.agents.registry import AgentRegistry, get_agent_registry, set_agent_registry  # noqa: E402
-from app.inference.mock import MockInferenceClient  # noqa: E402
 from app.inference.client import set_inference_client  # noqa: E402
+from app.inference.mock import MockInferenceClient  # noqa: E402
 from app.rag.embeddings import (  # noqa: E402
     HashingEmbeddingProvider,
     set_embedding_provider,

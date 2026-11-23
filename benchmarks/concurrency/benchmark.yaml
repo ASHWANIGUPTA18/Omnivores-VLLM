@@ -1,0 +1,115 @@
+# Sequential vs parallel multi-agent dispatch - experiment definition.
+#
+# Everything that could vary between the two arms is pinned here so the only
+# difference is the dispatch mode. The corpus is generated and frozen, so each
+# prompt has a known ground truth; `required_facts` are checked programmatically
+# and are independent of the LLM judge.
+
+experiment:
+  name: intra_request_multi_agent_concurrency
+  # Agents are addressed in this order; agent_count=N takes the first N.
+  agents: [bench_analyst, bench_reviewer, bench_synthesist, bench_methodologist]
+  channel: general
+
+conditions:
+  agent_count: [1, 2, 3, 4]
+  dispatch_mode: [sequential, parallel]
+  users: [1, 2, 4]          # capped at 4 by decision; 8 would queue past the
+                            # measured 2.41x KV headroom and confound the result
+  repetitions_sanity: 5
+  repetitions_full: 15
+
+# Sanity run: the subset to execute first.
+sanity:
+  agent_count: [2, 3]
+  dispatch_mode: [sequential, parallel]
+  users: [1]
+  repetitions: 5
+
+execution:
+  # Wait for vllm:num_requests_running to reach 0 before each run, so a
+  # scheduler still draining the previous condition cannot contaminate timing.
+  drain_before_run: true
+  drain_timeout_s: 60
+  # Interleave conditions rather than running one to completion, to spread
+  # thermal drift and cache warming across arms.
+  randomise_order: true
+  seed: 20260101
+  warmup_runs: 2
+  per_run_timeout_s: 300
+
+prompts:
+  - id: F1
+    type: factual_retrieval
+    text: >-
+      What single-stream decode throughput did Alpha Lab measure, and what was
+      the time to first token at one concurrent request?
+    required_facts: ["41.2", "189"]
+    expected_sources: [edge_report_alpha.md]
+
+  - id: F2
+    type: factual_retrieval
+    text: >-
+      What end-to-end latency did Beta Group measure for three agents run
+      sequentially versus concurrently, and what speedup did they report?
+    required_facts: ["43.9", "19.8", "2.22"]
+    expected_sources: [edge_report_beta.md]
+
+  - id: C1
+    type: comparative_reasoning
+    text: >-
+      Compare the practical concurrency ceilings reported by Alpha Lab and
+      Beta Group. What reason is given for the difference between them?
+    required_facts: ["four", "two", "KV cache"]
+    expected_sources: [edge_report_alpha.md, edge_report_beta.md]
+
+  - id: C2
+    type: comparative_reasoning
+    text: >-
+      Compare how Beta Group and Gamma Institute explain the latency reduction
+      from concurrent execution. What evidence does each rely on?
+    required_facts: ["prefix cach", "scheduler", "1.87"]
+    expected_sources: [edge_report_beta.md, edge_report_gamma.md]
+
+  - id: S1
+    type: multi_document_synthesis
+    text: >-
+      Across all four documents, where do the sources agree and where do they
+      disagree about the cause and the limits of concurrency speedup?
+    required_facts: ["per-agent", "prefix cach", "ceiling"]
+    expected_sources:
+      [edge_report_alpha.md, edge_report_beta.md, edge_report_gamma.md, deployment_notes_delta.md]
+
+  - id: S2
+    type: multi_document_synthesis
+    text: >-
+      What does the combined evidence say about whether concurrency harms
+      answer quality, and how strong is that evidence?
+    required_facts: ["94.1", "93.7", "88.2"]
+    expected_sources: [edge_report_gamma.md]
+
+# Scored in a separate pass over saved responses, never inside a timed window.
+quality:
+  judge_model: Qwen/Qwen3-8B      # self-judging: see limitations in the report
+  judge_base_url: http://127.0.0.1:8001/v1
+  judge_temperature: 0.0
+  judge_max_tokens: 400
+  rubric:
+    - key: citation_correctness
+      question: >-
+        Does every bracketed citation marker point at a source that actually
+        supports the sentence it is attached to?
+    - key: citation_completeness
+      question: >-
+        Is every factual claim that came from the documents accompanied by a
+        citation?
+    - key: answer_correctness
+      question: >-
+        Are the stated facts, numbers and names correct with respect to the
+        provided source excerpts?
+    - key: faithfulness
+      question: >-
+        Does the answer avoid asserting anything the excerpts do not support?
+    - key: completeness
+      question: >-
+        Does the answer cover the important information the question asked for?

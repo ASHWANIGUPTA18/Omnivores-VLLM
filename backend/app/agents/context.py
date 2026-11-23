@@ -153,19 +153,31 @@ class ContextManager:
             used += cost
 
         selected.reverse()
-        built.included_messages = len(selected)
-        built.dropped_messages = len(candidates) - len(selected)
 
-        if built.dropped_messages > 0:
-            note = (
-                f"[{built.dropped_messages} earlier message(s) in this channel were "
-                "omitted to fit the context window. Ask the user if you need "
-                "details from earlier in the conversation.]"
-            )
+        if len(candidates) > len(selected):
+            # The loop above stopped because the budget ran out, so whatever
+            # slack is left is smaller than the message that did not fit - and
+            # usually smaller than the note itself. Pay for the note by giving
+            # back the oldest messages we selected: being told that history was
+            # truncated is worth more than one more turn of it, because without
+            # the note the model answers as though those turns never happened.
+            note = _omission_note(len(candidates) - len(selected))
             note_tokens = estimate_message_tokens("system", note)
+            while selected and note_tokens > remaining - used:
+                evicted = selected.pop(0)
+                used -= estimate_message_tokens(evicted.role, evicted.content)
+                note = _omission_note(len(candidates) - len(selected))
+                note_tokens = estimate_message_tokens("system", note)
+
+            built.included_messages = len(selected)
+            built.dropped_messages = len(candidates) - len(selected)
+
             if note_tokens <= remaining - used:
                 selected.insert(0, ChatMessage.system(note))
                 used += note_tokens
+        else:
+            built.included_messages = len(selected)
+            built.dropped_messages = 0
 
         # --- assemble --------------------------------------------------------
         built.messages = [
@@ -213,6 +225,14 @@ class ContextManager:
             return ChatMessage.system(content)
 
         return ChatMessage.user(f"{author.display_name}: {content}")
+
+
+def _omission_note(dropped: int) -> str:
+    return (
+        f"[{dropped} earlier message(s) in this channel were "
+        "omitted to fit the context window. Ask the user if you need "
+        "details from earlier in the conversation.]"
+    )
 
 
 default_context_manager = ContextManager()

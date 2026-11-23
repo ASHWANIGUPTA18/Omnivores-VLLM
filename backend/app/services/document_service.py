@@ -20,8 +20,9 @@ from __future__ import annotations
 import asyncio
 import re
 import unicodedata
+from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
-from typing import Any, AsyncIterator, Awaitable, Callable
+from typing import Any
 
 from app.core.config import settings
 from app.core.exceptions import (
@@ -74,6 +75,8 @@ class DocumentService:
         self.upload_dir = Path(upload_dir or settings.upload_dir)
         self._documents: dict[str, Document] = {}
         self._tasks: set[asyncio.Task] = set()
+        #: In-flight ingestions by document id, so delete can cancel one.
+        self._ingestions: dict[str, asyncio.Task] = {}
         self._on_event: EventHook | None = None
 
     @property
@@ -199,7 +202,29 @@ class DocumentService:
             self._ingest(document, path), name=f"ingest-{document.id}"
         )
         self._tasks.add(task)
+        self._ingestions[document.id] = task
         task.add_done_callback(self._tasks.discard)
+        task.add_done_callback(
+            lambda finished, doc_id=document.id: self._ingestions.pop(doc_id, None)
+            if self._ingestions.get(doc_id) is finished
+            else None
+        )
+
+    async def _cancel_ingestion(self, document_id: str) -> None:
+        """Stop an in-flight ingestion and wait for it to actually stop.
+
+        Deleting a document while its ingestion is still running leaves chunks
+        the task writes *after* the store was cleared - searchable rows with no
+        document to attribute them to.
+        """
+        task = self._ingestions.pop(document_id, None)
+        if task is None or task.done():
+            return
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            pass
 
     async def _ingest(self, document: Document, path: Path) -> None:
         from app.core import events as ev
@@ -261,6 +286,9 @@ class DocumentService:
     async def delete(self, document_id: str) -> None:
         """Remove a document, its chunks, and its file."""
         document = self.get(document_id)
+
+        # Must precede the store wipe, or the task races us and re-adds chunks.
+        await self._cancel_ingestion(document_id)
 
         removed = await self.store.delete_document(document_id)
         logger.info(

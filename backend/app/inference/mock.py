@@ -33,7 +33,8 @@ import asyncio
 import hashlib
 import json
 import re
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 from app.core.config import settings
 from app.core.exceptions import InferenceError, InferenceTimeout

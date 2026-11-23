@@ -51,15 +51,34 @@ def estimate_tool_schema_tokens(schema: dict) -> int:
     )
 
 
+_ELLIPSIS = "..."
+
+
 def truncate_to_tokens(text: str, max_tokens: int) -> str:
-    """Cut ``text`` down to roughly ``max_tokens``, on a word boundary."""
+    """Cut ``text`` to at most ``max_tokens``, on a word boundary.
+
+    This is a hard upper bound, not an approximation: callers budget context
+    with it, so a result one token over the limit defeats the point. The
+    ellipsis is charged against the budget rather than added after it.
+    """
     if max_tokens <= 0:
         return ""
     if estimate_tokens(text) <= max_tokens:
         return text
-    max_chars = int(max_tokens * _CHARS_PER_TOKEN)
+
+    max_chars = int(max_tokens * _CHARS_PER_TOKEN) - len(_ELLIPSIS)
+    if max_chars <= 0:
+        return ""
+
     cut = text[:max_chars]
     last_space = cut.rfind(" ")
     if last_space > max_chars * 0.6:
         cut = cut[:last_space]
-    return cut.rstrip() + "..."
+
+    # estimate_tokens also floors on word count, so a character budget alone
+    # is not sufficient. Shrink until the estimate genuinely fits.
+    result = cut.rstrip() + _ELLIPSIS
+    while cut and estimate_tokens(result) > max_tokens:
+        cut = cut[: len(cut) - max(1, len(cut) // 16)]
+        result = cut.rstrip() + _ELLIPSIS
+    return result if cut else ""

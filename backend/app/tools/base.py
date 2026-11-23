@@ -52,7 +52,7 @@ class ToolResult:
     summary: str = ""
 
     @classmethod
-    def failure(cls, message: str, **metadata: Any) -> "ToolResult":
+    def failure(cls, message: str, **metadata: Any) -> ToolResult:
         return cls(content=message, ok=False, summary=message[:120], metadata=metadata)
 
 
@@ -135,7 +135,17 @@ def validate_arguments(
     return cleaned
 
 
-def _validate_value(value: Any, spec: dict[str, Any], name: str) -> tuple[str | None, Any]:
+def _validate_value(
+    value: Any, spec: dict[str, Any], name: str, *, coerce: bool = True
+) -> tuple[str | None, Any]:
+    """Validate one value against a JSON-Schema fragment.
+
+    ``coerce`` is lenient about the *shape* a model produced - "5" for an
+    integer, a bare scalar where a list was wanted - because those are common
+    and unambiguous slips. It is switched off for array items: rewriting
+    ``[1]`` into ``["1"]`` silently changes the caller's data rather than
+    telling the model it got the type wrong.
+    """
     expected = spec.get("type")
     if expected:
         allowed = _TYPE_MAP.get(expected, ())
@@ -143,8 +153,7 @@ def _validate_value(value: Any, spec: dict[str, Any], name: str) -> tuple[str | 
         if expected in ("integer", "number") and isinstance(value, bool):
             return f"'{name}' must be a {expected}, got boolean", None
         if not isinstance(value, allowed):
-            # A model emitting "5" for an integer is common and unambiguous.
-            coerced = _try_coerce(value, expected)
+            coerced = _try_coerce(value, expected) if coerce else None
             if coerced is None:
                 return (
                     f"'{name}' must be a {expected}, got {_type_name(value)}",
@@ -177,7 +186,9 @@ def _validate_value(value: Any, spec: dict[str, Any], name: str) -> tuple[str | 
         if isinstance(item_spec, dict):
             cleaned_items = []
             for index, item in enumerate(value):
-                error, coerced = _validate_value(item, item_spec, f"{name}[{index}]")
+                error, coerced = _validate_value(
+                    item, item_spec, f"{name}[{index}]", coerce=False
+                )
                 if error:
                     return error, None
                 cleaned_items.append(coerced)

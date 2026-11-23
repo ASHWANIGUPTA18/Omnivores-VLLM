@@ -36,7 +36,7 @@ class ChunkerConfig:
     min_chunk_tokens: int = 24
 
     @classmethod
-    def from_settings(cls) -> "ChunkerConfig":
+    def from_settings(cls) -> ChunkerConfig:
         return cls(
             chunk_size_tokens=settings.chunk_size_tokens,
             overlap_tokens=settings.chunk_overlap_tokens,
@@ -165,7 +165,7 @@ class Chunker:
         tokens = 0
         for unit in reversed(units):
             unit_tokens = estimate_tokens(unit)
-            if tokens + unit_tokens > self.config.overlap_tokens and tail:
+            if tokens + unit_tokens > self.config.overlap_tokens:
                 break
             tail.insert(0, unit)
             tokens += unit_tokens

@@ -44,7 +44,7 @@ class InferenceMetrics:
         if self.time_to_first_token is None:
             self.time_to_first_token = time.perf_counter() - self.start_time
 
-    def finish(self) -> "InferenceMetrics":
+    def finish(self) -> InferenceMetrics:
         self.total_time = time.perf_counter() - self.start_time
         return self
 
@@ -118,7 +118,7 @@ class AgentMetrics:
 
     error: str | None = None
 
-    def finish(self) -> "AgentMetrics":
+    def finish(self) -> AgentMetrics:
         self.total_time = time.perf_counter() - self.start_time
         return self
 

@@ -14,8 +14,9 @@ Client to server events use the same envelope with the ``EVT_CLIENT_*`` types.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import datetime, timezone
-from typing import Any, Iterable
+from typing import Any
 
 from app.core.models import Citation, Document, Message, ToolInvocation
 

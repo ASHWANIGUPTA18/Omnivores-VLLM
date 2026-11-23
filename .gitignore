@@ -45,3 +45,10 @@ models/
 Thumbs.db
 .idea/
 .vscode/
+
+# Generated reports
+*.pdf
+
+# Concurrency benchmark: dry runs carry no measurements and must never be
+# mistaken for results, so they stay out of version control.
+benchmarks/concurrency/results/DRYRUN-*/

@@ -317,3 +317,31 @@ async def test_retrieval_reports_timings(service, retriever_for, policy_text):
     metrics = result.metrics()
     assert metrics["candidates"] > 0
     assert metrics["total_ms"] >= 0
+
+
+async def test_deleting_mid_ingestion_leaves_no_orphan_chunks(
+    service, vector_store, policy_text
+):
+    """Delete must cancel an in-flight ingestion, not race it.
+
+    Ingestion is spawned as a background task, so a delete arriving while it
+    runs used to clear the store and then have the task write its chunks back.
+    Those rows stay searchable with no document to attribute them to, which
+    surfaces as citations pointing at a file the user already removed.
+    """
+    document = await service.upload(
+        filename="handbook.md",
+        stream=stream_bytes((policy_text * 20).encode("utf-8")),
+        channel_id="hr",
+    )
+
+    # Guard against the test going vacuous if ingestion ever becomes eager.
+    task = service._ingestions.get(document.id)
+    assert task is not None and not task.done(), "ingestion was not in flight"
+
+    await service.delete(document.id)
+    await service.wait_for_processing(timeout=10)
+
+    assert await vector_store.count() == 0
+    with pytest.raises(DocumentNotFound):
+        service.get(document.id)

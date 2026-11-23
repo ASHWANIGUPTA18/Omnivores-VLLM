@@ -1,0 +1,20 @@
+# Benchmark agent - concurrency experiment.
+# Generation parameters are identical across all benchmark agents on
+# purpose: only the role prompt may differ, or dispatch mode would be
+# confounded with agent heterogeneity.
+id: bench_synthesist
+display_name: Synthesis Analyst
+description: Benchmark role for the sequential-vs-parallel experiment.
+avatar: "🧩"
+system_prompt: |
+    You synthesise evidence across documents.
+
+    State where the sources agree and where they conflict, then give a
+    conclusion that the cited evidence supports. Attribute every claim to the
+    document it came from. Where sources disagree, say so explicitly rather
+    than choosing one silently.
+tools: [search_knowledge_base]
+temperature: 0.2
+max_output_tokens: 512
+max_tool_rounds: 2
+auto_retrieve: false

@@ -24,9 +24,10 @@ import json
 import math
 import threading
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any
 
 from app.core.config import settings
 from app.core.exceptions import ConfigurationError, VectorStoreError
@@ -218,7 +219,7 @@ class MemoryVectorStore(VectorStore):
             return
 
         with self._lock:
-            for chunk, vector in zip(chunks, vectors):
+            for chunk, vector in zip(chunks, vectors, strict=True):
                 self._records[chunk.id] = StoredChunk(
                     id=chunk.id,
                     text=chunk.text,
@@ -304,7 +305,7 @@ class MemoryVectorStore(VectorStore):
             if norm == 0.0 or q_norm == 0.0:
                 results.append((record, 0.0))
                 continue
-            dot = sum(a * b for a, b in zip(record.vector, query))
+            dot = sum(a * b for a, b in zip(record.vector, query, strict=True))
             results.append((record, self._to_unit_scale(dot / (norm * q_norm))))
         return results
 

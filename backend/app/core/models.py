@@ -44,7 +44,7 @@ class Author(BaseModel):
     avatar: str | None = None
 
     @classmethod
-    def system(cls) -> "Author":
+    def system(cls) -> Author:
         return cls(id="system", type=AuthorType.SYSTEM, display_name="Omnivores")
 
 

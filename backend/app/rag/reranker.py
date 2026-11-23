@@ -77,7 +77,7 @@ class LexicalReranker(Reranker):
         scores = await asyncio.to_thread(self._bm25_scores, query, chunks)
 
         highest = max(scores) if scores else 0.0
-        for chunk, lexical in zip(chunks, scores):
+        for chunk, lexical in zip(chunks, scores, strict=True):
             normalized = (lexical / highest) if highest > 0 else 0.0
             chunk.rerank_score = (
                 (1.0 - self.LEXICAL_WEIGHT) * chunk.score
@@ -182,7 +182,7 @@ class CrossEncoderReranker(Reranker):
 
         # Cross-encoder logits are unbounded; squash to 0..1 so the score means
         # the same thing as it does for the other rerankers.
-        for chunk, value in zip(chunks, raw):
+        for chunk, value in zip(chunks, raw, strict=True):
             chunk.rerank_score = 1.0 / (1.0 + math.exp(-float(value)))
 
         chunks.sort(key=lambda c: c.final_score, reverse=True)

@@ -48,14 +48,42 @@ _CLOSE_POLICY_VIOLATION = 1008
 _CLOSE_TRY_AGAIN_LATER = 1013
 
 
+#: A display name is chosen by the client, rendered in every other
+#: participant's browser, and used as the speaker label in the model prompt.
+#: It is untrusted input on all three counts.
+MAX_DISPLAY_NAME = 32
+DEFAULT_DISPLAY_NAME = "You"
+
+
+def clean_display_name(raw: str | None) -> str:
+    """Reduce a client-supplied name to a short single line of printable text.
+
+    Newlines matter most: the context builder renders a message as
+    ``"<name>: <content>"``, so a name containing a line break could forge what
+    looks like a separate turn in the prompt.
+    """
+    if not raw:
+        return DEFAULT_DISPLAY_NAME
+    collapsed = " ".join(raw.split())
+    printable = "".join(ch for ch in collapsed if ch.isprintable())
+    return printable[:MAX_DISPLAY_NAME].strip() or DEFAULT_DISPLAY_NAME
+
+
 class Connection:
     """One client socket."""
 
-    def __init__(self, websocket: WebSocket, connection_id: str) -> None:
+    def __init__(
+        self,
+        websocket: WebSocket,
+        connection_id: str,
+        display_name: str | None = None,
+    ) -> None:
         self.websocket = websocket
         self.id = connection_id
         self.author = Author(
-            id=f"user_{connection_id[:8]}", type=AuthorType.USER, display_name="You"
+            id=f"user_{connection_id[:8]}",
+            type=AuthorType.USER,
+            display_name=clean_display_name(display_name),
         )
         #: Agent runs started by this connection, cancelled if it goes away.
         self.tasks: set[asyncio.Task] = set()
@@ -107,7 +135,9 @@ manager = ConnectionManager()
 
 @router.websocket("/ws")
 async def websocket_endpoint(
-    websocket: WebSocket, token: str | None = Query(default=None)
+    websocket: WebSocket,
+    token: str | None = Query(default=None),
+    name: str | None = Query(default=None),
 ) -> None:
     try:
         authorize_websocket(token)
@@ -125,7 +155,7 @@ async def websocket_endpoint(
 
     await websocket.accept()
 
-    connection = Connection(websocket, new_id("conn"))
+    connection = Connection(websocket, new_id("conn"), display_name=name)
     manager.add(connection)
 
     messages = get_message_service()

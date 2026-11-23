@@ -8,20 +8,29 @@ Responsibilities:
 * forward the runtime's events and text deltas to the broadcast hub,
 * keep the stored message and the streamed message in agreement.
 
-Multiple mentioned agents run **sequentially**, not concurrently. Two agents
-streaming into the same channel at once is unreadable, and on a single-GPU vLLM
-deployment it is also slower per-agent than doing them in turn.
+Multiple mentioned agents run **sequentially** by default. Two agents streaming
+into the same channel at once is harder to read, and the assumption has been
+that on a single-GPU vLLM deployment it is also slower per-agent than doing
+them in turn.
+
+That assumption is testable, so ``AGENT_DISPATCH=parallel`` selects a
+concurrent path instead. Both modes pin the channel history to a single
+snapshot taken before any agent starts: run sequentially the second agent would
+otherwise see the first one's reply, and the two modes would be answering
+different prompts.
 """
 
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from app.agents.mentions import parse_mentions
 from app.agents.registry import AgentDefinition, AgentRegistry, get_agent_registry
 from app.agents.runtime import AgentRuntime, default_runtime
 from app.core import events as ev
+from app.core.config import settings
 from app.core.exceptions import OmnivoresError
 from app.core.logging import get_logger, set_request_id
 from app.core.models import Author, AuthorType, Message, MessageStatus
@@ -70,10 +79,17 @@ class AgentService:
         runtime: AgentRuntime | None = None,
         agent_registry: AgentRegistry | None = None,
         message_service: MessageService | None = None,
+        dispatch_mode: str | None = None,
     ) -> None:
         self._runtime = runtime or default_runtime
         self._agents = agent_registry
         self._messages = message_service
+        mode = dispatch_mode or settings.agent_dispatch
+        if mode not in ("sequential", "parallel"):
+            raise ValueError(
+                f"dispatch_mode must be 'sequential' or 'parallel', got {mode!r}"
+            )
+        self.dispatch_mode = mode
         #: message_id -> running task, so a client can cancel a generation.
         self._running: dict[str, asyncio.Task] = {}
 
@@ -123,13 +139,79 @@ class AgentService:
             )
             await on_event(ev.message_created(note))
 
+        if not targets:
+            return []
+
+        # One snapshot, shared by every agent in this turn. Taken here rather
+        # than inside run_agent so that sequential and parallel dispatch give
+        # the agents exactly the same context - without this, the second
+        # sequential agent would see the first one's reply and the two modes
+        # could not be compared.
+        history = self.messages.history(message.channel_id)
+
+        if self.dispatch_mode == "parallel":
+            return await self._dispatch_parallel(targets, message, history, on_event)
+        return await self._dispatch_sequential(targets, message, history, on_event)
+
+    async def _dispatch_sequential(
+        self,
+        targets: list[AgentDefinition],
+        message: Message,
+        history: list[Message],
+        on_event: EventHook,
+    ) -> list[Message]:
         replies: list[Message] = []
         for definition in targets:
             reply = await self.run_agent(
-                definition=definition, user_message=message, on_event=on_event
+                definition=definition,
+                user_message=message,
+                on_event=on_event,
+                history=history,
             )
             if reply is not None:
                 replies.append(reply)
+        return replies
+
+    async def _dispatch_parallel(
+        self,
+        targets: list[AgentDefinition],
+        message: Message,
+        history: list[Message],
+        on_event: EventHook,
+    ) -> list[Message]:
+        """Run every agent at once, isolating failures.
+
+        ``return_exceptions`` keeps one agent's crash from cancelling its
+        siblings, matching the sequential path where each agent fails on its
+        own. Replies are returned in mention order, not completion order, so
+        the caller sees a stable result either way.
+        """
+        outcomes = await asyncio.gather(
+            *(
+                self.run_agent(
+                    definition=definition,
+                    user_message=message,
+                    on_event=on_event,
+                    history=history,
+                )
+                for definition in targets
+            ),
+            return_exceptions=True,
+        )
+
+        replies: list[Message] = []
+        for definition, outcome in zip(targets, outcomes, strict=True):
+            if isinstance(outcome, asyncio.CancelledError):
+                continue
+            if isinstance(outcome, BaseException):
+                logger.error(
+                    "agent %s failed during parallel dispatch: %s",
+                    definition.id,
+                    outcome,
+                )
+                continue
+            if outcome is not None:
+                replies.append(outcome)
         return replies
 
     async def run_agent(
@@ -138,8 +220,14 @@ class AgentService:
         definition: AgentDefinition,
         user_message: Message,
         on_event: EventHook,
+        history: list[Message] | None = None,
     ) -> Message | None:
-        """Run one agent and stream its reply into the channel."""
+        """Run one agent and stream its reply into the channel.
+
+        ``history`` is the pinned snapshot from ``handle_user_message``. It is
+        optional so that direct callers keep working, in which case the current
+        history is read instead.
+        """
         channel_id = user_message.channel_id
         author = Author(
             id=definition.id,
@@ -163,7 +251,8 @@ class AgentService:
 
         buffer = _DeltaBuffer(flush_delta)
 
-        history = self.messages.history(channel_id)
+        if history is None:
+            history = self.messages.history(channel_id)
 
         task = asyncio.create_task(
             self._runtime.run(

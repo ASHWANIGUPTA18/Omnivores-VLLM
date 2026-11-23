@@ -1,22 +1,24 @@
 # Omnivores - GPU stack.
 #
 # The full production shape: vLLM serving a local model, the backend using it,
-# local embeddings, a Chroma index, and Docker-isolated code execution.
+# local embeddings and a Chroma index.
 #
-#   export MODEL_NAME=Qwen/Qwen3-8B
-#   export TOOL_CALL_PARSER=hermes
-#   docker build -t omnivores-sandbox:latest backend/sandbox-image
-#   docker compose -f docker-compose.gpu.yml up
+#   cp .env.example .env        # then edit MODEL_NAME / TOOL_CALL_PARSER
+#   docker compose -f docker-compose.gpu.yml up -d --build
 #
 # Requires an NVIDIA GPU and the NVIDIA Container Toolkit.
 #
+# CODE EXECUTION (@coder's run_python tool)
+# Disabled by default. The backend image ships no docker CLI and runs as uid
+# 10001, so PYTHON_SANDBOX_MODE=docker cannot work without also patching
+# backend/Dockerfile and adding group_add for the host's docker group. To
+# enable it, see docs/RUNBOOK-GPU.md. Every other feature works without it.
+#
 # SECURITY NOTE
-# The backend mounts the Docker socket so it can launch sandbox containers.
-# That is a privileged mount: anything able to execute inside the backend
-# container can control the host's Docker daemon. Accept it only on a machine
-# you control, and keep the backend port off the public internet. To avoid it
-# entirely, set PYTHON_SANDBOX_MODE=disabled and remove the socket mount -
-# every other feature keeps working.
+# Enabling the sandbox requires mounting the Docker socket (commented out
+# below). That is a privileged mount: anything able to execute inside the
+# backend container can control the host's Docker daemon. Accept it only on a
+# machine you control, and keep the backend port off the public internet.
 
 services:
   vllm:
@@ -44,6 +46,7 @@ services:
       QUANTIZATION: ${QUANTIZATION:-}
       ENABLE_TOOL_CALLING: "true"
       TOOL_CALL_PARSER: ${TOOL_CALL_PARSER:?set TOOL_CALL_PARSER to match your model}
+      EXTRA_ARGS: ${EXTRA_ARGS:-}
       VLLM_API_KEY: ${VLLM_API_KEY:-}
       HF_TOKEN: ${HF_TOKEN:-}
 
@@ -92,28 +95,43 @@ services:
       VLLM_API_KEY: ${VLLM_API_KEY:-}
       MODEL_NAME: ${SERVED_MODEL_NAME:-${MODEL_NAME}}
 
+      # The runtime takes min(MAX_CONTEXT_TOKENS, what the server reports), so
+      # leaving this at its 16384 default wastes half of a 32768 window.
+      MAX_CONTEXT_TOKENS: ${MAX_CONTEXT_TOKENS:-28672}
+      CONTEXT_RAG_TOKEN_BUDGET: ${CONTEXT_RAG_TOKEN_BUDGET:-6000}
+
       EMBEDDING_PROVIDER: local
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
       VECTOR_STORE: chroma
       RERANKER: ${RERANKER:-lexical}
 
-      PYTHON_SANDBOX_MODE: docker
+      # See the note at the top of this file before setting this to "docker".
+      PYTHON_SANDBOX_MODE: ${PYTHON_SANDBOX_MODE:-disabled}
       PYTHON_SANDBOX_IMAGE: omnivores-sandbox:latest
 
       WEB_SEARCH_PROVIDER: ${WEB_SEARCH_PROVIDER:-mock}
       TAVILY_API_KEY: ${TAVILY_API_KEY:-}
 
+      # Leave API_KEY empty for a local demo. The frontend image bakes
+      # VITE_API_KEY in at build time and this compose file passes none, so a
+      # non-empty API_KEY here makes the UI 401 on every request.
       API_KEY: ${API_KEY:-}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+
+      # Needed only if EMBEDDING_MODEL or RERANKER_MODEL is a gated repo.
+      HF_TOKEN: ${HF_TOKEN:-}
 
       UPLOAD_DIR: /app/data/uploads
       VECTOR_STORE_PATH: /app/data/vectorstore
 
     volumes:
       - backend-data:/app/data
-      # Required for PYTHON_SANDBOX_MODE=docker. See the note at the top.
-      - /var/run/docker.sock:/var/run/docker.sock
       - model-cache:/home/omnivores/.cache
+      # Custom agent YAML. The image copies only app/, so without this mount
+      # anything in backend/agents.d is silently ignored.
+      - ./backend/agents.d:/app/agents.d:ro
+      # Uncomment for PYTHON_SANDBOX_MODE=docker. See the note at the top.
+      # - /var/run/docker.sock:/var/run/docker.sock
 
     depends_on:
       vllm:
@@ -131,7 +149,8 @@ services:
       - "3000:80"
 
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
 volumes:
   backend-data:

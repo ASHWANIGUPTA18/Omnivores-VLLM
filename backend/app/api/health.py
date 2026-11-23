@@ -20,6 +20,7 @@ from typing import Any
 from fastapi import APIRouter
 
 from app.core.config import settings
+from app.core.exceptions import ValidationError
 from app.core.logging import get_logger
 from app.core.metrics import metrics_registry
 from app.core.models import ComponentHealth, HealthReport
@@ -27,6 +28,7 @@ from app.inference.client import get_inference_client
 from app.rag.embeddings import get_embedding_provider
 from app.rag.store import get_vector_store
 from app.sandbox import get_sandbox
+from app.services.agent_service import get_agent_service
 from app.services.document_service import get_document_service
 from app.services.message_service import get_message_service
 from app.tools.registry import get_tool_registry
@@ -176,6 +178,33 @@ async def metrics() -> dict[str, Any]:
     return metrics_registry.snapshot()
 
 
+@router.post("/config/dispatch-mode")
+async def set_dispatch_mode(mode: str) -> dict[str, Any]:
+    """Switch agent dispatch between sequential and parallel at runtime.
+
+    Exists for the concurrency experiment: restarting the backend between arms
+    would reset the GPU context and the embedding model, so the two arms would
+    not be measured against the same machine state. Refused outside
+    development, because it changes behaviour for every connected user.
+    """
+    if settings.app_env == "production":
+        raise ValidationError("dispatch mode cannot be changed in production")
+    service = get_agent_service()
+    previous = service.dispatch_mode
+    try:
+        service.dispatch_mode = _validated_dispatch_mode(mode)
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
+    logger.warning("dispatch mode changed: %s -> %s", previous, service.dispatch_mode)
+    return {"previous": previous, "dispatch_mode": service.dispatch_mode}
+
+
+def _validated_dispatch_mode(mode: str) -> str:
+    if mode not in ("sequential", "parallel"):
+        raise ValueError(f"mode must be 'sequential' or 'parallel', got {mode!r}")
+    return mode
+
+
 @router.get("/config")
 async def config() -> dict[str, Any]:
     """Non-secret configuration, so the UI can adapt and support can diagnose.
@@ -194,6 +223,7 @@ async def config() -> dict[str, Any]:
             "max_context_tokens": settings.max_context_tokens,
         },
         "agents": {
+            "dispatch_mode": get_agent_service().dispatch_mode,
             "max_tool_rounds": settings.max_tool_rounds,
             "max_tool_calls": settings.max_tool_calls,
             "timeout_seconds": settings.agent_timeout_seconds,

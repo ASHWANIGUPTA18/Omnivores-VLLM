@@ -18,7 +18,7 @@ import hashlib
 import math
 import re
 from abc import ABC, abstractmethod
-from typing import Sequence
+from collections.abc import Sequence
 
 from app.core.config import settings
 from app.core.exceptions import ConfigurationError, EmbeddingError
@@ -54,7 +54,7 @@ def cosine_similarity(a: Sequence[float], b: Sequence[float]) -> float:
     dot = 0.0
     norm_a = 0.0
     norm_b = 0.0
-    for x, y in zip(a, b):
+    for x, y in zip(a, b, strict=True):
         dot += x * y
         norm_a += x * x
         norm_b += y * y

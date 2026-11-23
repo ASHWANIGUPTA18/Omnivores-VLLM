@@ -13,8 +13,9 @@ from __future__ import annotations
 
 import json
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Literal
+from typing import Any, Literal
 
 Role = Literal["system", "user", "assistant", "tool"]
 
@@ -79,21 +80,21 @@ class ChatMessage:
         return payload
 
     @classmethod
-    def system(cls, content: str) -> "ChatMessage":
+    def system(cls, content: str) -> ChatMessage:
         return cls(role="system", content=content)
 
     @classmethod
-    def user(cls, content: str, name: str | None = None) -> "ChatMessage":
+    def user(cls, content: str, name: str | None = None) -> ChatMessage:
         return cls(role="user", content=content, name=name)
 
     @classmethod
     def assistant(
         cls, content: str | None = None, tool_calls: list[ToolCall] | None = None
-    ) -> "ChatMessage":
+    ) -> ChatMessage:
         return cls(role="assistant", content=content, tool_calls=tool_calls or [])
 
     @classmethod
-    def tool(cls, tool_call_id: str, content: str, name: str | None = None) -> "ChatMessage":
+    def tool(cls, tool_call_id: str, content: str, name: str | None = None) -> ChatMessage:
         return cls(role="tool", content=content, tool_call_id=tool_call_id, name=name)
 
 

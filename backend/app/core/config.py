@@ -28,6 +28,10 @@ VectorStoreName = Literal["memory", "chroma"]
 RerankerName = Literal["none", "lexical", "cross_encoder"]
 SandboxMode = Literal["disabled", "docker", "subprocess"]
 WebSearchProviderName = Literal["mock", "tavily"]
+#: How several agents mentioned in one message are run. Sequential is the
+#: historical behaviour and stays the default; parallel exists so the two
+#: can be compared under identical conditions.
+AgentDispatchMode = Literal["sequential", "parallel"]
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
@@ -76,6 +80,7 @@ class Settings(BaseSettings):
     max_context_tokens: int = 16384
     context_rag_token_budget: int = 4000
     context_recent_messages: int = 20
+    agent_dispatch: AgentDispatchMode = "sequential"
 
     # --- RAG ---------------------------------------------------------------
     embedding_provider: EmbeddingProviderName = "mock"
@@ -180,7 +185,7 @@ class Settings(BaseSettings):
         return v
 
     @model_validator(mode="after")
-    def _check_provider_credentials(self) -> "Settings":
+    def _check_provider_credentials(self) -> Settings:
         if self.llm_provider == "openai" and not self.openai_api_key:
             raise ValueError("LLM_PROVIDER=openai requires OPENAI_API_KEY")
         if self.web_search_provider == "tavily" and not self.tavily_api_key:
@@ -223,7 +228,7 @@ class Settings(BaseSettings):
 
 
 @lru_cache
-def get_settings() -> "Settings":
+def get_settings() -> Settings:
     return Settings()
 
 

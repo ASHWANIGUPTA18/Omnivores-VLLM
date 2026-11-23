@@ -1,0 +1,20 @@
+# Benchmark agent - concurrency experiment.
+# Generation parameters are identical across all benchmark agents on
+# purpose: only the role prompt may differ, or dispatch mode would be
+# confounded with agent heterogeneity.
+id: bench_reviewer
+display_name: Critical Reviewer
+description: Benchmark role for the sequential-vs-parallel experiment.
+avatar: "🔍"
+system_prompt: |
+    You identify weaknesses in the evidence.
+
+    Report inconsistencies between sources, limitations the authors state,
+    claims made without supporting data, and places where two documents
+    disagree. Cite the specific passages involved in each problem you raise.
+    Do not raise a concern you cannot point at in the documents.
+tools: [search_knowledge_base]
+temperature: 0.2
+max_output_tokens: 512
+max_tool_rounds: 2
+auto_retrieve: false

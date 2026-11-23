@@ -15,7 +15,8 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict, deque
-from typing import Any, Awaitable, Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable
+from typing import Any
 
 from app.core.config import settings
 from app.core.exceptions import ChannelNotFound, ValidationError
@@ -240,7 +241,7 @@ class MessageService:
             *(callback(event) for _, callback in subscribers),
             return_exceptions=True,
         )
-        for (connection_id, _), outcome in zip(subscribers, results):
+        for (connection_id, _), outcome in zip(subscribers, results, strict=True):
             if isinstance(outcome, Exception):
                 logger.debug("dropping subscriber %s: %s", connection_id, outcome)
                 self.unsubscribe(connection_id)

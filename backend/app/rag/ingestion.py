@@ -15,9 +15,9 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Awaitable, Callable
 
 from app.core.config import settings
 from app.core.exceptions import DocumentParseError, EmbeddingError, VectorStoreError

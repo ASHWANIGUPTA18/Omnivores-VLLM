@@ -14,7 +14,8 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from app.core.config import settings
 from app.core.exceptions import (

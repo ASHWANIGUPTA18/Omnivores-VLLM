@@ -20,7 +20,6 @@ from app.inference.base import (
     ToolCallDelta,
     ToolSpec,
 )
-from app.inference.mock import MockInferenceClient
 
 SEARCH_TOOL = ToolSpec(
     name="search_knowledge_base",

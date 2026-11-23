@@ -22,6 +22,54 @@ const MAX_BACKOFF_MS = 15000
 //: served by an error than by a flood of stale messages on reconnect.
 const MAX_QUEUE = 50
 
+//: The workspace is shared, so every participant needs a name of their own.
+//: Taken from ?name= if present, otherwise remembered from last time,
+//: otherwise asked for once. Resolved lazily and cached so a reconnect never
+//: re-prompts. The server sanitises whatever we send.
+const NAME_KEY = 'omnivores.displayName'
+const MAX_NAME = 32
+let cachedName = null
+
+export function displayName() {
+  if (cachedName !== null) return cachedName
+  cachedName = ''
+  try {
+    const fromUrl = new URLSearchParams(window.location.search).get('name')
+    if (fromUrl && fromUrl.trim()) {
+      cachedName = fromUrl.trim().slice(0, MAX_NAME)
+      window.localStorage.setItem(NAME_KEY, cachedName)
+      return cachedName
+    }
+    const stored = window.localStorage.getItem(NAME_KEY)
+    if (stored) {
+      cachedName = stored
+      return cachedName
+    }
+    const asked = window.prompt(
+      'Your name (everyone in this workspace will see it):',
+      '',
+    )
+    cachedName = (asked || '').trim().slice(0, MAX_NAME)
+    if (cachedName) window.localStorage.setItem(NAME_KEY, cachedName)
+  } catch {
+    // Private browsing, blocked storage, or a suppressed prompt. The server
+    // falls back to a default name, so this is not worth failing over.
+    cachedName = cachedName || ''
+  }
+  return cachedName
+}
+
+export function setDisplayName(name) {
+  cachedName = (name || '').trim().slice(0, MAX_NAME)
+  try {
+    if (cachedName) window.localStorage.setItem(NAME_KEY, cachedName)
+    else window.localStorage.removeItem(NAME_KEY)
+  } catch {
+    // Not fatal - the name still applies to this session.
+  }
+  return cachedName
+}
+
 function defaultUrl() {
   if (WS_URL) return WS_URL
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -58,6 +106,8 @@ export class OmnivoresSocket {
 
     const url = new URL(defaultUrl())
     if (API_KEY) url.searchParams.set('token', API_KEY)
+    const name = displayName()
+    if (name) url.searchParams.set('name', name)
 
     try {
       this.socket = new WebSocket(url.toString())

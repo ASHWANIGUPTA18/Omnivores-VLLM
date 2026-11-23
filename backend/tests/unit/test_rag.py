@@ -10,12 +10,11 @@ import pytest
 
 from app.core.models import DocumentChunk, RetrievedChunk
 from app.core.tokens import estimate_tokens
-from app.rag.embeddings import HashingEmbeddingProvider, cosine_similarity, tokenize
+from app.rag.embeddings import cosine_similarity, tokenize
 from app.rag.parser import MarkdownParser, TextParser, normalize_whitespace
 from app.rag.reranker import LexicalReranker, NoopReranker
 from app.rag.retriever import build_context, build_scope_filter
 from app.rag.store import MemoryVectorStore, matches_filter
-
 
 # --- embeddings ------------------------------------------------------------
 
